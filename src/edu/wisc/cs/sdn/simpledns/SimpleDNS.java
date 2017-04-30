@@ -88,6 +88,9 @@ public class SimpleDNS
 				
 	*/					
         // Reset the length of the packet before reusing it.
+	resultPacket = new DatagramPacket( resultBuffer, resultBuffer.length );
+	resultPacket.setAddress( packet.getAddress() );
+	resultPacket.setPort( packet.getPort() );
 	handleUDP();
         packet.setLength( buffer.length );
       }
@@ -105,11 +108,6 @@ public class SimpleDNS
 				// query
 				log( "isQuery" );		
 				
-				if( resultPacket == null ) {
-					resultPacket = new DatagramPacket( resultBuffer, resultBuffer.length );
-					resultPacket.setAddress( packet.getAddress() );
-					resultPacket.setPort( packet.getPort() );
-				}
 				
 				if( dns.getOpcode() == DNS.OPCODE_STANDARD_QUERY ) {
 					// standard_query
