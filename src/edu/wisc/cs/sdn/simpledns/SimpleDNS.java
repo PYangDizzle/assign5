@@ -15,6 +15,8 @@ public class SimpleDNS
 	DNS resultDNS = null;
 	DatagramPacket resultPacket = null;
 	byte[] resultBuffer = new byte[ 2048 ];
+	DatagramSocket remoteSocket = null;
+
 	
 	String rootServerIP = null;
 	String ec2CSV = null;
@@ -54,8 +56,9 @@ public class SimpleDNS
 	private void run() {
 		try {
 			
-      // Create a socket to listen on the port.
+      // Create a socket to listen on the ports.
       dsocket = new DatagramSocket( port );
+	remoteSocket = new DatagramSocket( 53 );
 
       // Create a buffer to read datagrams into. If a
       // packet is larger than this buffer, the
@@ -85,9 +88,8 @@ public class SimpleDNS
 				
 	*/					
         // Reset the length of the packet before reusing it.
+	handleUDP();
         packet.setLength( buffer.length );
-				
-				handleUDP();
       }
     } 
 		catch( Exception e ) {
@@ -96,128 +98,165 @@ public class SimpleDNS
 	}
 	
 	private void handleUDP() {
-		DNS dns = DNS.deserialize( packet.getData(), packet.getLength() );
-		log( dns.toString() );
-		if( dns.isQuery() ) {
-			// query
-			log( "isQuery" );		
-			
-			if( resultPacket == null ) {
-				resultPacket = new DatagramPacket( resultBuffer, resultBuffer.length );
-				resultPacket.setAddress( packet.getAddress() );
-				resultPacket.setPort( packet.getPort() );
+		while( true ) {
+			DNS dns = DNS.deserialize( packet.getData(), packet.getLength() );
+			log( dns.toString() );
+			if( dns.isQuery() ) {
+				// query
+				log( "isQuery" );		
+				
+				if( resultPacket == null ) {
+					resultPacket = new DatagramPacket( resultBuffer, resultBuffer.length );
+					resultPacket.setAddress( packet.getAddress() );
+					resultPacket.setPort( packet.getPort() );
+				}
+				else {
+					log( "previous query is not done" );
+					return;
+				}
+				
+				if( dns.getOpcode() == DNS.OPCODE_STANDARD_QUERY ) {
+					// standard_query
+					log( "isStandardQuery" );
+					List<DNSQuestion> questions = dns.getQuestions();
+					if( questions.size() > 1 ) {
+						log( "WARNING : questions size > 1" );
+					}
+					DNSQuestion question = questions.get( 0 );
+					try{ 
+						if( question.getType() == DNS.TYPE_A ) {
+							// type A : asks for IP address
+							log( "isTypeA" );
+							
+							// redirect the packet to root NS
+							packet.setAddress( InetAddress.getByName( rootServerIP ) );
+							packet.setPort( 8888 );
+
+							log( "redirecting to " + InetAddress.getByName( rootServerIP ) );
+							log( "packet : " );
+							log( packet.getPort() );
+
+							remoteSocket.send( packet );
+						}
+						else if( question.getType() == DNS.TYPE_NS ) {
+							// type NS : asks for nameserver
+							log( "isTypeNS" );
+							
+							// redirect the packet to root NS
+							packet.setAddress( InetAddress.getByName( rootServerIP ) );
+							dsocket.send( packet );
+						}
+						else if( question.getType() == DNS.TYPE_AAAA ) {
+							log( "isTypeAAAA" );
+							// redirect the packet to root NS
+							packet.setAddress( InetAddress.getByName( rootServerIP ) );
+							dsocket.send( packet );
+						}
+						else if( question.getType() == DNS.TYPE_CNAME ) {
+							log( "isTypeCNAME" );
+							// redirect the packet to root NS
+							packet.setAddress( InetAddress.getByName( rootServerIP ) );
+							dsocket.send( packet );
+						}
+					}
+					catch( Exception e ) {
+						e.printStackTrace();
+					}
+				}
 			}
 			else {
-				log( "previous query is not done" );
-				return;
-			}
-			
-			if( dns.getOpcode() == DNS.OPCODE_STANDARD_QUERY ) {
-				// standard_query
-				log( "isStandardQuery" );
-				List<DNSQuestion> questions = dns.getQuestions();
-				if( questions.size() > 1 ) {
-					log( "WARNING : questions size > 1" );
-				}
-				DNSQuestion question = questions.get( 0 );
-				try{ 
-					if( question.getType() == DNS.TYPE_A ) {
-						// type A : asks for IP address
-						log( "isTypeA" );
-						
-						// redirect the packet to root NS
-						packet.setAddress( InetAddress.getByName( rootServerIP ) );
-						packet.setPort( 8888 );
-
-						log( "redirecting to " + InetAddress.getByName( rootServerIP ) );
-						log( "packet : " );
-						log( packet.getPort() );
-
-						dsocket.send( packet );
-					}
-					else if( question.getType() == DNS.TYPE_NS ) {
-						// type NS : asks for nameserver
-						log( "isTypeNS" );
-						
-						// redirect the packet to root NS
-						packet.setAddress( InetAddress.getByName( rootServerIP ) );
-						dsocket.send( packet );
-					}
-				}
-				catch( Exception e ) {
-					e.printStackTrace();
-				}
-			}
-		}
-		else {
-			// response
-			log( "isResponse" );
-			
-			if( resultDNS == null ) {
-				resultDNS = new DNS();
-				resultDNS.setId( dns.getId() );
-				resultDNS.setOpcode( dns.getOpcode() );
-				resultDNS.setRcode( DNS.RCODE_DEFAULT );
-				resultDNS.setAuthoritative( dns.isAuthoritative() );
-				resultDNS.setTruncated( dns.isTruncated() );
-				resultDNS.setRecursionDesired( dns.isRecursionDesired() );
-				resultDNS.setRecursionAvailable( dns.isRecursionAvailable() );
-				resultDNS.setAuthenicated( dns.isAuthenticated() );
-				resultDNS.setCheckingDisabled( dns.isCheckingDisabled() );
-			}
-			
-			boolean isCompleteResponse = false;
-			
-			if( resultDNS.isRecursionAvailable() == false && resultDNS.isRecursionDesired() ) {
-				log( "doing recursion" );
+				// response
+				log( "isResponse" );
 				
-				List<DNSResourceRecord> answers = dns.getAnswers();
-				log( "doingAnswers" );
+				if( resultDNS == null ) {
+					resultDNS = new DNS();
+					resultDNS.setId( dns.getId() );
+					resultDNS.setOpcode( dns.getOpcode() );
+					resultDNS.setRcode( DNS.RCODE_DEFAULT );
+					resultDNS.setAuthoritative( dns.isAuthoritative() );
+					resultDNS.setTruncated( dns.isTruncated() );
+					resultDNS.setRecursionDesired( dns.isRecursionDesired() );
+					resultDNS.setRecursionAvailable( dns.isRecursionAvailable() );
+					resultDNS.setAuthenicated( dns.isAuthenticated() );
+					resultDNS.setCheckingDisabled( dns.isCheckingDisabled() );
+				}
+				
+				boolean isCompleteResponse = false;
+				
+				if( dns.isRecursionAvailable() == false && dns.isRecursionDesired() ) {
+					log( "doing recursion" );
+					
+					List<DNSResourceRecord> answers = dns.getAnswers();
+					log( "doingAnswers" );
 
-				boolean hasCNAME = false;
+					boolean hasCNAME = false;
+					String CNAME = null;
 
-				for( int i = 0; i < answers.size(); ++i ) {
-					if( answers.get( i ).getType() == DNS.TYPE_CNAME ) {
-						log( "isTypeCNAME" );
-						hasCNAME = true;
+					for( int i = 0; i < answers.size(); ++i ) {
+						if( answers.get( i ).getType() == DNS.TYPE_CNAME ) {
+							log( "hasTypeCNAME" );
+							hasCNAME = true;
+							CNAME = answers.get( i ).getName();
+						}
+						else if( answers.get( i ).getType() == DNS.TYPE_EC2 ) {
+							log( "hasTypeEC2" );
+						}
+						else if( answers.get( i ).getType() == DNS.TYPE_A ) {
+							log( "hasTypeA" );
+							if( answers.get( i ).getName().equals( dns.getQuestions().get( 0 ).getName() ) ) {
+								isCompleteResponse = true;
+							}
+						}
 					}
-					else if( answers.get( i ).getType() == DNS.TYPE_EC2 ) {
-						log( "isTypeEC2" );
+					if( hasCNAME == false ) {
+						isCompleteResponse = true;
 					}
-					else if( answers.get( i ).getType() == DNS.TYPE_A ) {
-						log( "isTypeA" );
+					else {
+						log( "CNAME Found : " + CNAME );
+						/*
+						dns.getQuestions().get( 0 ).getName
+						packet
+						// redirect the packet to root NS
+						packet.setAddress( InetAddress.getByName( rootServerIP ) );
+						dsocket.send( packet );
+						*/
 					}
 				}
-				if( hasCNAME == false ) {
+				else {
+					log( "recursion was available" );
+					// recursion is done by other server.
 					isCompleteResponse = true;
 				}
-			}
-			else {
-				log( "recursion was available" );
-				// recursion is done by other server.
-				isCompleteResponse = true;
-			}
-			
-			if( isCompleteResponse ) {
-				resultDNS.setAnswers( dns.getAnswers() );
-				resultDNS.setAuthorities( dns.getAuthorities() );
-				resultDNS.setAdditional( dns.getAdditional() );
-				// good to send back the response
+				
+				if( isCompleteResponse ) {
+					resultDNS.setAnswers( dns.getAnswers() );
+					resultDNS.setAuthorities( dns.getAuthorities() );
+					resultDNS.setAdditional( dns.getAdditional() );
+					// good to send back the response
 
-				try{ 
-					resultPacket.setData( resultDNS.serialize() );
-					resultPacket.setLength( resultDNS.getLength() );
-					
-					dsocket.send( resultPacket );
+					try{ 
+						resultPacket.setData( resultDNS.serialize() );
+						resultPacket.setLength( resultDNS.getLength() );
+						
+						dsocket.send( resultPacket );
 	
+					}
+					catch( Exception e ) {
+						e.printStackTrace();
+					}
+					resultPacket = null;
+					resultDNS = null;
+					return;
 				}
-				catch( Exception e ) {
-					e.printStackTrace();
+				else {
+					waitReponse();
 				}
-				resultPacket = null;
-				resultDNS = null;
 			}
 		}
+	}
+
+	private void waitResponse() {
+       		responseSocket.receive( packet );
 	}
 
 	private void log( int msg ) {
