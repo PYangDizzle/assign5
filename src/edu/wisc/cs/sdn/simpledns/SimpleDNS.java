@@ -110,10 +110,6 @@ public class SimpleDNS
 					resultPacket.setAddress( packet.getAddress() );
 					resultPacket.setPort( packet.getPort() );
 				}
-				else {
-					log( "previous query is not done" );
-					return;
-				}
 				
 				if( dns.getOpcode() == DNS.OPCODE_STANDARD_QUERY ) {
 					// standard_query
@@ -206,6 +202,10 @@ public class SimpleDNS
 							if( answers.get( i ).getName().equals( dns.getQuestions().get( 0 ).getName() ) ) {
 								isCompleteResponse = true;
 							}
+							else {
+								packet.setAddress( ((DNSRdataAddress)answers.get( i ).getData()).getAddress() );
+								remoteSocket.send( packet );
+							}
 						}
 					}
 					if( hasCNAME == false ) {
@@ -229,6 +229,7 @@ public class SimpleDNS
 				}
 				
 				if( isCompleteResponse ) {
+					log( "Complete" )
 					resultDNS.setAnswers( dns.getAnswers() );
 					resultDNS.setAuthorities( dns.getAuthorities() );
 					resultDNS.setAdditional( dns.getAdditional() );
