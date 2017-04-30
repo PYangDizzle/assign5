@@ -124,7 +124,7 @@ public class SimpleDNS
 							
 							// redirect the packet to root NS
 							packet.setAddress( InetAddress.getByName( rootServerIP ) );
-							packet.setPort( 8888 );
+//							packet.setPort( 8888 );
 
 							log( "redirecting to " + InetAddress.getByName( rootServerIP ) );
 							log( "packet : " );
