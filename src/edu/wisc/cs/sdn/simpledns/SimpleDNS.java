@@ -227,7 +227,7 @@ public class SimpleDNS
 				}
 				
 				if( isCompleteResponse ) {
-					log( "Complete" )
+					log( "Complete" );
 					resultDNS.setAnswers( dns.getAnswers() );
 					resultDNS.setAuthorities( dns.getAuthorities() );
 					resultDNS.setAdditional( dns.getAdditional() );
