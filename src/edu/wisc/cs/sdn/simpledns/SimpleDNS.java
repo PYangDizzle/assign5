@@ -202,7 +202,8 @@ public class SimpleDNS
 							}
 							else {
 								packet.setAddress( ((DNSRdataAddress)answers.get( i ).getData()).getAddress() );
-								remoteSocket.send( packet );
+								dsocket.send( packet );
+								waitResponse();
 							}
 						}
 					}
