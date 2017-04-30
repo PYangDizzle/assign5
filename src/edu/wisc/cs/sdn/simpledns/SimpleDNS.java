@@ -131,6 +131,7 @@ public class SimpleDNS
 							log( packet.getPort() );
 
 							remoteSocket.send( packet );
+							waitResponse();
 						}
 						else if( question.getType() == DNS.TYPE_NS ) {
 							// type NS : asks for nameserver
@@ -202,7 +203,7 @@ public class SimpleDNS
 							}
 							else {
 								packet.setAddress( ((DNSRdataAddress)answers.get( i ).getData()).getAddress() );
-								dsocket.send( packet );
+								remoteSocket.send( packet );
 								waitResponse();
 							}
 						}
