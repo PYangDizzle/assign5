@@ -14,6 +14,7 @@ public class SimpleDNS
 	
 	DNS resultDNS = null;
 	DatagramPacket resultPacket = null;
+	byte[] resultBuffer = new byte[ 2048 ];
 	
 	String rootServerIP = null;
 	String ec2CSV = null;
@@ -26,18 +27,19 @@ public class SimpleDNS
 	{
 		
 		System.out.println("Hello, DNS!"); 
+		SimpleDNS simpleDNS = new SimpleDNS();
 				
 		try {
 			for( int i = 0; i < 4; ++i ) {
 				if( args[ i ].equals( "-r" ) ) {
-					rootServerIP = args[ i + 1 ];
+					simpleDNS.rootServerIP = args[ i + 1 ];
 				}
-				else if( args[ i ].equals( "-e" ) {
-					ec2CSV = args[ i + 1 ];
+				else if( args[ i ].equals( "-e" ) ) {
+					simpleDNS.ec2CSV = args[ i + 1 ];
 				}
 			}
 			
-			if( rootServerIP == null || ec2CSV == null ) {
+			if( simpleDNS.rootServerIP == null || simpleDNS.ec2CSV == null ) {
 				throw new Exception( "One of them is null" );
 			}
 		}
@@ -46,7 +48,7 @@ public class SimpleDNS
 			e.printStackTrace();
 		}
 		
-		new SimpleDNS().run();
+		simpleDNS.run();
 	}
 	
 	private void run() {
@@ -69,6 +71,7 @@ public class SimpleDNS
         dsocket.receive( packet );
 
         // Convert the contents to a string, and display them
+	/*
         String msg = new String( buffer, 0, packet.getLength() );
         log( packet.getAddress().getHostName() + ": "
             + msg );
@@ -80,7 +83,7 @@ public class SimpleDNS
 					dsocket.send(sendPacket);		
 				}
 				
-						
+	*/					
         // Reset the length of the packet before reusing it.
         packet.setLength( buffer.length );
 				
@@ -93,14 +96,14 @@ public class SimpleDNS
 	}
 	
 	private void handleUDP() {
-		DNS dns = DNS.deserialize( packet.getData(), packet.length() );
+		DNS dns = DNS.deserialize( packet.getData(), packet.getLength() );
 		log( dns.toString() );
 		if( dns.isQuery() ) {
 			// query
 			log( "isQuery" );		
 			
 			if( resultPacket == null ) {
-				resultPacket = new DatagramPacket();
+				resultPacket = new DatagramPacket( resultBuffer, resultBuffer.length );
 				resultPacket.setAddress( packet.getAddress() );
 				resultPacket.setPort( packet.getPort() );
 			}
@@ -117,21 +120,32 @@ public class SimpleDNS
 					log( "WARNING : questions size > 1" );
 				}
 				DNSQuestion question = questions.get( 0 );
-				if( question.getType() == DNS.TYPE_A ) {
-					// type A : asks for IP address
-					log( "isTypeA" );
-					
-					// redirect the packet to root NS
-					packet.setAddress( InetAddress.getByName( rootServerIP ) );
-					dsocket.send( packet );
+				try{ 
+					if( question.getType() == DNS.TYPE_A ) {
+						// type A : asks for IP address
+						log( "isTypeA" );
+						
+						// redirect the packet to root NS
+						packet.setAddress( InetAddress.getByName( rootServerIP ) );
+						packet.setPort( 8888 );
+
+						log( "redirecting to " + InetAddress.getByName( rootServerIP ) );
+						log( "packet : " );
+						log( packet.getPort() );
+
+						dsocket.send( packet );
+					}
+					else if( question.getType() == DNS.TYPE_NS ) {
+						// type NS : asks for nameserver
+						log( "isTypeNS" );
+						
+						// redirect the packet to root NS
+						packet.setAddress( InetAddress.getByName( rootServerIP ) );
+						dsocket.send( packet );
+					}
 				}
-				else if( question.getType() == DNS.TYPE_NS ) {
-					// type NS : asks for nameserver
-					log( "isTypeNS" );
-					
-					// redirect the packet to root NS
-					packet.setAddress( InetAddress.getByName( rootServerIP ) );
-					dsocket.send( packet );
+				catch( Exception e ) {
+					e.printStackTrace();
 				}
 			}
 		}
@@ -152,47 +166,67 @@ public class SimpleDNS
 				resultDNS.setCheckingDisabled( dns.isCheckingDisabled() );
 			}
 			
-			boolean isComplete = false;
+			boolean isCompleteResponse = false;
 			
 			if( resultDNS.isRecursionAvailable() == false && resultDNS.isRecursionDesired() ) {
+				log( "doing recursion" );
 				
 				List<DNSResourceRecord> answers = dns.getAnswers();
 				log( "doingAnswers" );
-				for( int i = 0; i < answers; ++i ) {
+
+				boolean hasCNAME = false;
+
+				for( int i = 0; i < answers.size(); ++i ) {
 					if( answers.get( i ).getType() == DNS.TYPE_CNAME ) {
 						log( "isTypeCNAME" );
-						
+						hasCNAME = true;
 					}
 					else if( answers.get( i ).getType() == DNS.TYPE_EC2 ) {
 						log( "isTypeEC2" );
 					}
 					else if( answers.get( i ).getType() == DNS.TYPE_A ) {
 						log( "isTypeA" );
-						
 					}
+				}
+				if( hasCNAME == false ) {
+					isCompleteResponse = true;
 				}
 			}
 			else {
+				log( "recursion was available" );
 				// recursion is done by other server.
-				isComplete = true;
-				resultDNS.
+				isCompleteResponse = true;
 			}
 			
 			if( isCompleteResponse ) {
+				resultDNS.setAnswers( dns.getAnswers() );
+				resultDNS.setAuthorities( dns.getAuthorities() );
+				resultDNS.setAdditional( dns.getAdditional() );
 				// good to send back the response
-				resultPacket.setData( resultDNS.serialize() );
-				resultPAcket.setLength( resultDNS.getLength() );
-				
-				dsocket.send( resultPacket );
+
+				try{ 
+					resultPacket.setData( resultDNS.serialize() );
+					resultPacket.setLength( resultDNS.getLength() );
+					
+					dsocket.send( resultPacket );
+	
+				}
+				catch( Exception e ) {
+					e.printStackTrace();
+				}
 				resultPacket = null;
 				resultDNS = null;
 			}
 		}
 	}
+
+	private void log( int msg ) {
+		log( String.format( "%d", msg ) );
+	}
 	
-	private void log( String ) {
+	private void log( String msg ) {
 		if( debug ) {
-			System.err.println( String );
+			System.err.println( msg );
 		}
 	}
 }
