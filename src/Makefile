@@ -1,6 +1,6 @@
 JFLAGS = -g
 JC = javac
-JVM = java
+JVM = sudo java
 RM = rm -f
 DIR = edu/wisc/cs/sdn/simpledns/
 File=
@@ -20,7 +20,7 @@ default: classes
 classes: $(CLASSES:.java=.class)
 
 run: classes
-	$(JVM) $(MAIN) -r a.gtld-servers.net -e ec2.csv
+	$(JVM) $(MAIN) -r a.root-servers.net -e ec2.csv
 
 clean:
 	$(RM) **/*.class

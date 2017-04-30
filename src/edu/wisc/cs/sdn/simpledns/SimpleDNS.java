@@ -249,14 +249,20 @@ public class SimpleDNS
 					return;
 				}
 				else {
-					waitReponse();
+					waitResponse();
 				}
 			}
 		}
 	}
 
 	private void waitResponse() {
-       		responseSocket.receive( packet );
+			  try {
+       		remoteSocket.receive( packet );
+			  }
+			  catch( Exception e ) {
+						 	e.printStackTrace();
+			  }
+			  
 	}
 
 	private void log( int msg ) {
