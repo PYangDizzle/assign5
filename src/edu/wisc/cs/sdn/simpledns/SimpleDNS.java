@@ -100,7 +100,7 @@ public class SimpleDNS
     }
 	}
 	
-	private void handleUDP() {
+	private void handleUDP() throws Exception {
 		while( true ) {
 			DNS dns = DNS.deserialize( packet.getData(), packet.getLength() );
 			log( dns.toString() );
