@@ -4,6 +4,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.List;
+import java.util.ArrayList;
 
 import edu.wisc.cs.sdn.simpledns.packet.*;
 
@@ -21,9 +22,12 @@ public class SimpleDNS
 	String rootServerIP = null;
 	String ec2CSV = null;
 	
+	boolean doWait = false;
 	
 	final int port = 8053;
 	final boolean debug = true;
+
+
 	
 	public static void main(String[] args)
 	{
@@ -58,7 +62,7 @@ public class SimpleDNS
 			
       // Create a socket to listen on the ports.
       dsocket = new DatagramSocket( port );
-	remoteSocket = new DatagramSocket( 53 );
+	remoteSocket = new DatagramSocket( 8888 );
 
       // Create a buffer to read datagrams into. If a
       // packet is larger than this buffer, the
@@ -102,6 +106,8 @@ public class SimpleDNS
 	
 	private void handleUDP() throws Exception {
 		while( true ) {
+			doWait = true;
+			log( "packetLength = " + packet.getLength() );
 			DNS dns = DNS.deserialize( packet.getData(), packet.getLength() );
 			log( dns.toString() );
 			if( dns.isQuery() ) {
@@ -125,6 +131,7 @@ public class SimpleDNS
 							// redirect the packet to root NS
 							packet.setAddress( InetAddress.getByName( rootServerIP ) );
 //							packet.setPort( 8888 );
+							packet.setPort( 53 );
 
 							log( "redirecting to " + InetAddress.getByName( rootServerIP ) );
 							log( "packet : " );
@@ -182,44 +189,90 @@ public class SimpleDNS
 					log( "doing recursion" );
 					
 					List<DNSResourceRecord> answers = dns.getAnswers();
-					log( "doingAnswers" );
+					List<DNSResourceRecord> authorities = dns.getAuthorities();
+					List<DNSResourceRecord> additionals = dns.getAdditional();
 
 					boolean hasCNAME = false;
 					String CNAME = null;
 
-					for( int i = 0; i < answers.size(); ++i ) {
-						if( answers.get( i ).getType() == DNS.TYPE_CNAME ) {
-							log( "hasTypeCNAME" );
-							hasCNAME = true;
-							CNAME = answers.get( i ).getName();
+
+					if( answers.isEmpty() ) {
+						log( "doesn't have answers" );
+						String additionalName = null;
+						if( authorities.isEmpty() == false ) {
+							log( "authority is not empty " );
+							additionalName = ((DNSRdataName)( authorities.get( 0 ).getData() )).getName();
 						}
-						else if( answers.get( i ).getType() == DNS.TYPE_EC2 ) {
-							log( "hasTypeEC2" );
-						}
-						else if( answers.get( i ).getType() == DNS.TYPE_A ) {
-							log( "hasTypeA" );
-							if( answers.get( i ).getName().equals( dns.getQuestions().get( 0 ).getName() ) ) {
-								isCompleteResponse = true;
+						log( "additionalName = " + additionalName );
+						
+						if( additionals.isEmpty() == false ) {
+							if( additionalName != null ) {
+								for( int i = 0; i < additionals.size(); ++i ) {
+									if( additionals.get( i ).getName().equals( additionalName ) ) {
+										packet.setAddress( ((DNSRdataAddress)additionals.get( i ).getData()).getAddress() );
+										log( "redirecting to " + ((DNSRdataAddress)additionals.get( i ).getData()).toString() );
+										break;
+									}
+								}
 							}
 							else {
-								packet.setAddress( ((DNSRdataAddress)answers.get( i ).getData()).getAddress() );
-								remoteSocket.send( packet );
-								waitResponse();
+								packet.setAddress( ((DNSRdataAddress)additionals.get( 0 ).getData()).getAddress() );
+								log( "redirecting to " + ((DNSRdataAddress)additionals.get( 0 ).getData()).toString() );
 							}
+							packet.setPort( 53 );
+							dns.setQuery( true );
+							dns.setAnswers( new ArrayList<DNSResourceRecord>() );
+							dns.setAuthorities( new ArrayList<DNSResourceRecord>() );
+							dns.setAdditional( new ArrayList<DNSResourceRecord>() );
+							packet.setData( dns.serialize() );
+							packet.setLength( dns.getLength() );
+
+							log( "packetLength when send " + packet.getLength() );
+							
+							remoteSocket.send( packet );
+							waitResponse();
 						}
 					}
-					if( hasCNAME == false ) {
-						isCompleteResponse = true;
-					}
+
 					else {
-						log( "CNAME Found : " + CNAME );
-						/*
-						dns.getQuestions().get( 0 ).getName
-						packet
-						// redirect the packet to root NS
-						packet.setAddress( InetAddress.getByName( rootServerIP ) );
-						dsocket.send( packet );
-						*/
+						log( "hasAnswers" );
+
+						for( int i = 0; i < answers.size(); ++i ) {
+							if( answers.get( i ).getType() == DNS.TYPE_CNAME ) {
+								log( "hasTypeCNAME" );
+								hasCNAME = true;
+								CNAME = answers.get( i ).getName();
+							}
+							else if( answers.get( i ).getType() == DNS.TYPE_EC2 ) {
+								log( "hasTypeEC2" );
+							}
+							else if( answers.get( i ).getType() == DNS.TYPE_A ) {
+								log( "hasTypeA" );
+								if( answers.get( i ).getName().equals( dns.getQuestions().get( 0 ).getName() ) ) {
+									isCompleteResponse = true;
+								}
+								else {
+									packet.setAddress( ((DNSRdataAddress)answers.get( i ).getData()).getAddress() );
+									remoteSocket.send( packet );
+									waitResponse();
+								}
+							}
+						}
+					
+
+						if( hasCNAME == false ) {
+							isCompleteResponse = true;
+						}
+						else {
+							log( "CNAME Found : " + CNAME );
+							/*
+							dns.getQuestions().get( 0 ).getName
+							packet
+							// redirect the packet to root NS
+							packet.setAddress( InetAddress.getByName( rootServerIP ) );
+							dsocket.send( packet );
+							*/
+						}
 					}
 				}
 				else {
@@ -257,12 +310,17 @@ public class SimpleDNS
 	}
 
 	private void waitResponse() {
-			  try {
-       		remoteSocket.receive( packet );
-			  }
-			  catch( Exception e ) {
-						 	e.printStackTrace();
-			  }
+		if( doWait ) {
+			log( "waiting" );
+			doWait = false;
+			try {
+       				remoteSocket.receive( packet );
+				log( "packetLength when receive " + packet.getLength() );
+			}
+			catch( Exception e ) {
+				e.printStackTrace();
+			}
+		}
 			  
 	}
 
