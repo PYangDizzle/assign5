@@ -19,7 +19,7 @@ import edu.wisc.cs.sdn.simpledns.packet.*;
 public class SimpleDNS 
 {
 	final int port = 8053;
-	final boolean debug = true;
+	final boolean debug = false;
 	final int bufferLength = 2048;
 
 	DatagramSocket dsocket = null;

@@ -15,7 +15,7 @@ public class DNSRdataName implements DNSRdata
 	public DNSRdataName(String name)
 	{ this.name = name; 
 	
-	System.err.println( "New DNSRdataName created = " + this.name );	
+	//System.err.println( "New DNSRdataName created = " + this.name );	
 	}
 	
 	public String getName()
@@ -24,20 +24,20 @@ public class DNSRdataName implements DNSRdata
 	public void setName(String name)
 	{ this.name = name; 
 	
-	System.err.println( "New DNSRdataName set = " + this.name );	
+	//System.err.println( "New DNSRdataName set = " + this.name );	
 	}
 	
 	public static DNSRdata deserialize(ByteBuffer bb)
 	{
 		DNSRdataName rdata = new DNSRdataName();		
 		rdata.name = DNS.deserializeName(bb);
-	System.err.println( "DNSRdataName deserialized = " + rdata.name );	
+	//System.err.println( "DNSRdataName deserialized = " + rdata.name );	
 		return rdata;
 	}
 	
 	public byte[] serialize()
 	{ 
-	System.err.println( "DNSRdataName serialized= " + this.name );	
+	//System.err.println( "DNSRdataName serialized= " + this.name );	
 			  return DNS.serializeName(this.name); }
 	
 	public int getLength()
