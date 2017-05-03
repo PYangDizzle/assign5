@@ -73,6 +73,7 @@ public class DNSResourceRecord
 				break;
 			case DNS.TYPE_NS:
 			case DNS.TYPE_CNAME:
+			case DNS.TYPE_SOA:
 				record.data = DNSRdataName.deserialize(bb);
 				break;
 			default:
