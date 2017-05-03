@@ -118,6 +118,9 @@ public class DNSResourceRecord
 		case DNS.TYPE_CNAME:
 			strType = "CNAME";
 			break;
+		case DNS.TYPE_SOA:
+			strType = "SOA";
+			break;
 		case DNS.TYPE_AAAA:
 			strType = "AAAA";
 			break;
@@ -128,7 +131,8 @@ public class DNSResourceRecord
 			strType = "EC2";
 			break;
 		default:
-			strType = String.format("Unknown (%d)", this.type);
+			//strType = String.format("Unknown (%d)", this.type);
+			strType = "TXT";
 			break;
 		}
 		

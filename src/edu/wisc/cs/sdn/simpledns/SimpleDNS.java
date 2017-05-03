@@ -22,6 +22,7 @@ public class SimpleDNS
 	DNS resultDNS = null;
 	DatagramPacket resultPacket = null;
 	byte[] resultBuffer = new byte[ bufferLength ];
+	byte[] reusableBuffer = new byte[ bufferLength ];
 	DatagramSocket remoteSocket = null;
 	
 	List<DNSResourceRecord> toAddToAnswer = new LinkedList<DNSResourceRecord>();
@@ -75,13 +76,11 @@ public class SimpleDNS
       byte[] buffer = new byte[ bufferLength ];
 
       // Create a packet to receive data into the buffer
-      packet = new DatagramPacket( buffer, buffer.length );
+      packet = new DatagramPacket( buffer, bufferLength );
 
       // Now loop forever, waiting to receive packets and printing them.
       while( true ) {
         
-				// Reset the length of the packet before reusing it.
-				packet.setLength( buffer.length );
 				// Wait to receive a datagram
         dsocket.receive( packet );
 
@@ -104,6 +103,8 @@ public class SimpleDNS
 	resultPacket.setAddress( packet.getAddress() );
 	resultPacket.setPort( packet.getPort() );
 	handleUDP();
+				// Reset the length of the packet before reusing it.
+				packet.setLength( bufferLength );
         
       }
     } 
@@ -115,7 +116,7 @@ public class SimpleDNS
 	private void handleUDP() throws Exception {
 		while( true ) {
 			doWait = true;
-			log( "packetLength = " + packet.getLength() );
+			//log( "packetLength = " + packet.getLength() );
 			DNS dns = DNS.deserialize( packet.getData(), packet.getLength() );
 			log( dns.toString() );
 			if( dns.isQuery() ) {
@@ -135,39 +136,30 @@ public class SimpleDNS
 						if( question.getType() == DNS.TYPE_A ) {
 							// type A : asks for IP address
 							log( "isTypeA" );
-							
-							// redirect the packet to root NS
-							packet.setAddress( InetAddress.getByName( rootServerIP ) );
-//							packet.setPort( 8888 );
-							packet.setPort( 53 );
-
-							log( "redirecting to " + InetAddress.getByName( rootServerIP ) );
-							log( "packet : " );
-							log( packet.getPort() );
-
-							remoteSocket.send( packet );
-							waitResponse();
 						}
 						else if( question.getType() == DNS.TYPE_NS ) {
 							// type NS : asks for nameserver
 							log( "isTypeNS" );
 							
-							// redirect the packet to root NS
-							packet.setAddress( InetAddress.getByName( rootServerIP ) );
-							dsocket.send( packet );
 						}
 						else if( question.getType() == DNS.TYPE_AAAA ) {
 							log( "isTypeAAAA" );
-							// redirect the packet to root NS
-							packet.setAddress( InetAddress.getByName( rootServerIP ) );
-							dsocket.send( packet );
 						}
 						else if( question.getType() == DNS.TYPE_CNAME ) {
 							log( "isTypeCNAME" );
-							// redirect the packet to root NS
-							packet.setAddress( InetAddress.getByName( rootServerIP ) );
-							dsocket.send( packet );
 						}
+
+						// redirect the packet to root NS
+						packet.setAddress( InetAddress.getByName( rootServerIP ) );
+//						packet.setPort( 8888 );
+						packet.setPort( 53 );
+
+						log( "redirecting to " + InetAddress.getByName( rootServerIP ) );
+						log( "packet : " );
+						log( packet.getPort() );
+
+						remoteSocket.send( packet );
+						waitResponse();
 					}
 					catch( Exception e ) {
 						e.printStackTrace();
@@ -209,40 +201,52 @@ public class SimpleDNS
 						String additionalName = null;
 						if( authorities.isEmpty() == false ) {
 							log( "authority is not empty " );
-							additionalName = ((DNSRdataName)( authorities.get( 0 ).getData() )).getName();
-						}
-						log( "additionalName = " + additionalName );
-						
-						if( additionals.isEmpty() == false ) {
-							if( additionalName != null ) {
-								for( int i = 0; i < additionals.size(); ++i ) {
-									if( additionals.get( i ).getName().equals( additionalName ) ) {
-										packet.setAddress( ((DNSRdataAddress)additionals.get( i ).getData()).getAddress() );
-										log( "redirecting to " + ((DNSRdataAddress)additionals.get( i ).getData()).toString() );
+							boolean foundMatch = false;
+							for( int i = 0; foundMatch == false && i < authorities.size(); ++i ) {
+								if( authorities.get( i ).getType() == DNS.TYPE_NS ) {
+									additionalName = ((DNSRdataName)( authorities.get( i ).getData() )).getName();
+									if( additionals.isEmpty() == false ) {
+										if( additionalName != null ) {
+											for( int j = 0; j < additionals.size(); ++j ) {
+												if( additionals.get( j ).getName().equals( additionalName ) ) {
+													packet.setAddress( ((DNSRdataAddress)additionals.get( j ).getData()).getAddress() );
+													log( "redirecting to " + ((DNSRdataAddress)additionals.get( j ).getData()).toString() );
+													foundMatch = true;
+													break;
+												}
+											}
+										}
+									}
+									else {
+										log( "answer AND additional is empty? GIVE UP" );
+										isCompleteResponse = true;
 										break;
 									}
 								}
 							}
-							else {
-								packet.setAddress( ((DNSRdataAddress)additionals.get( 0 ).getData()).getAddress() );
-								log( "redirecting to " + ((DNSRdataAddress)additionals.get( 0 ).getData()).toString() );
-							}
-							packet.setPort( 53 );
-							dns.setQuery( true );
-							dns.setAnswers( new ArrayList<DNSResourceRecord>() );
-							dns.setAuthorities( new ArrayList<DNSResourceRecord>() );
-							dns.setAdditional( new ArrayList<DNSResourceRecord>() );
-							packet.setData( dns.serialize() );
-							packet.setLength( dns.getLength() );
 
-							log( "packetLength when send " + packet.getLength() );
-							
-							remoteSocket.send( packet );
-							waitResponse();
+							if( foundMatch == false ) {
+								//packet.setAddress( ((DNSRdataAddress)additionals.get( 0 ).getData()).getAddress() );
+								//log( "redirecting to " + ((DNSRdataAddress)additionals.get( 0 ).getData()).toString() );
+								isCompleteResponse = true;
+							}
+							else {
+								packet.setPort( 53 );
+								dns.setQuery( true );
+								dns.setAnswers( new ArrayList<DNSResourceRecord>() );
+								dns.setAuthorities( new ArrayList<DNSResourceRecord>() );
+								dns.setAdditional( new ArrayList<DNSResourceRecord>() );
+								packet.setData( dns.serialize() );
+								packet.setLength( dns.getLength() );
+
+								//log( "packetLength when send " + packet.getLength() );
+										
+								remoteSocket.send( packet );
+								waitResponse();
+							}
 						}
-						else {
-							log( "answer AND additional is empty?" );
-						}
+						log( "additionalName = " + additionalName );
+						
 					}
 
 					else {
@@ -251,17 +255,34 @@ public class SimpleDNS
 						for( int i = 0; i < answers.size(); ++i ) {
 							if( answers.get( i ).getType() == DNS.TYPE_CNAME ) {
 								log( "hasTypeCNAME" );
-								hasCNAME = true;
-								//CNAME = answers.get( i ).getName();
-								toAddToAnswer.add( answers.get( i ) );
+								if( dns.getQuestions().get(0).getType() == DNS.TYPE_CNAME ) {
+									isCompleteResponse = true;
+									break;
+								}
+								else if( dns.getQuestions().get(0).getType() == DNS.TYPE_A || dns.getQuestions().get(0).getType() == DNS.TYPE_AAAA ) {
+									hasCNAME = true;
+									//CNAME = answers.get( i ).getName();
+									toAddToAnswer.add( answers.get( i ) );
+								}
 							}
 							else if( answers.get( i ).getType() == DNS.TYPE_EC2 ) {
 								log( "hasTypeEC2" );
 							}
+							else if( answers.get( i ).getType() == DNS.TYPE_NS ) {
+								log( "hasTypeNS" );
+								if( dns.getQuestions().get(0).getType() == DNS.TYPE_NS ) {
+									isCompleteResponse = true;
+									break;
+								}
+							}
 							else if( answers.get( i ).getType() == DNS.TYPE_A || answers.get( i ).getType() == DNS.TYPE_AAAA ) {
 								log( "hasTypeA or AAAA" );
 								if( answers.get( i ).getName().equals( dns.getQuestions().get( 0 ).getName() ) ) {
-									isCompleteResponse = true;
+									log( "answer with correct name" );
+									if( answers.get(i).getType() == dns.getQuestions().get(0).getType() ) {
+										isCompleteResponse = true;
+									}
+									log( "answer with correct name but A != AAAA" );
 								}
 								else {
 									/*
@@ -310,6 +331,8 @@ public class SimpleDNS
 					for( int i = 0; i < toAddToAnswer.size(); ++i ) {
 						resultDNS.addAnswer( toAddToAnswer.get(i));
 					}
+
+					toAddToAnswer.clear();
 					// good to send back the response
 
 					try{ 
@@ -339,9 +362,10 @@ public class SimpleDNS
 			log( "waiting" );
 			doWait = false;
 			try {
-				packet.setLength( bufferLength );
+      				packet = new DatagramPacket( reusableBuffer, bufferLength );
+				//packet.setLength( bufferLength );
        				remoteSocket.receive( packet );
-				log( "packetLength when receive " + packet.getLength() );
+				//log( "packetLength when receive " + packet.getLength() );
 			}
 			catch( Exception e ) {
 				e.printStackTrace();
