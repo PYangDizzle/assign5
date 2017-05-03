@@ -12,12 +12,16 @@ import edu.wisc.cs.sdn.simpledns.packet.*;
 
 public class SimpleDNS 
 {
+	final int port = 8053;
+	final boolean debug = true;
+	final int bufferLength = 2048;
+
 	DatagramSocket dsocket = null;
 	DatagramPacket packet = null;
 	
 	DNS resultDNS = null;
 	DatagramPacket resultPacket = null;
-	byte[] resultBuffer = new byte[ 2048 ];
+	byte[] resultBuffer = new byte[ bufferLength ];
 	DatagramSocket remoteSocket = null;
 	
 	List<DNSResourceRecord> toAddToAnswer = new LinkedList<DNSResourceRecord>();
@@ -28,9 +32,6 @@ public class SimpleDNS
 	
 	boolean doWait = false;
 	
-	final int port = 8053;
-	final boolean debug = true;
-
 
 	
 	public static void main(String[] args)
@@ -71,7 +72,7 @@ public class SimpleDNS
       // Create a buffer to read datagrams into. If a
       // packet is larger than this buffer, the
       // excess will simply be discarded!
-      byte[] buffer = new byte[ 2048 ];
+      byte[] buffer = new byte[ bufferLength ];
 
       // Create a packet to receive data into the buffer
       packet = new DatagramPacket( buffer, buffer.length );
@@ -276,8 +277,6 @@ public class SimpleDNS
 
 						if( isCompleteResponse == false ) {
 							if( hasCNAME ) {
-								packet.setAddress( ((DNSRdataAddress)additionals.get( i ).getData()).getAddress() );
-								dns.toAddToAnswer.get(0);
 								packet.setPort( 53 );
 								dns.setQuery( true );
 								dns.setQuestions( Arrays.asList( new DNSQuestion( toAddToAnswer.get(0).getName(), dns.getQuestions().get(0).getType() ) ) );
@@ -340,8 +339,8 @@ public class SimpleDNS
 			log( "waiting" );
 			doWait = false;
 			try {
-				packet.setLength( buffer.length );
-       	remoteSocket.receive( packet );
+				packet.setLength( bufferLength );
+       				remoteSocket.receive( packet );
 				log( "packetLength when receive " + packet.getLength() );
 			}
 			catch( Exception e ) {
