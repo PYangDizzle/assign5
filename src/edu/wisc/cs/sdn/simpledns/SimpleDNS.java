@@ -233,10 +233,12 @@ public class SimpleDNS
 										if( additionalName != null ) {
 											for( int j = 0; j < additionals.size(); ++j ) {
 												if( additionals.get( j ).getName().equals( additionalName ) ) {
-													packet.setAddress( ((DNSRdataAddress)additionals.get( j ).getData()).getAddress() );
-													log( "redirecting to " + ((DNSRdataAddress)additionals.get( j ).getData()).toString() );
-													foundMatch = true;
-													break;
+													if( additionals.get( j ).getType() == DNS.TYPE_A ) {
+														packet.setAddress( ((DNSRdataAddress)additionals.get( j ).getData()).getAddress() );
+														log( "redirecting to " + ((DNSRdataAddress)additionals.get( j ).getData()).toString() );
+														foundMatch = true;
+														break;
+													}
 												}
 											}
 										}
