@@ -19,7 +19,7 @@ import edu.wisc.cs.sdn.simpledns.packet.*;
 public class SimpleDNS 
 {
 	final int port = 8053;
-	final boolean debug = false;
+	final boolean debug = true;
 	final int bufferLength = 2048;
 
 	DatagramSocket dsocket = null;
@@ -307,42 +307,44 @@ public class SimpleDNS
 									log( "answer with correct name" );
 									if( answers.get(i).getType() == dns.getQuestions().get(0).getType() ) {
 										isCompleteResponse = true;
-										// Check EC2
-										int address = CSVReader.toIPv4Address( ((DNSRdataAddress)answers.get( i ).getData()).getAddress().getAddress() );
-										//log( "Before : " + answers.get( i ).getData().toString() + "\tAfter : " + address );
-										int maxMatchIndex = -1;
-										int maxCount = -1;
-										for( int k = 0; k < ec2.get( "prefix" ).size(); ++k ) {
-											int prefix = (Integer)ec2.get( "prefix" ).get( k );
-											//int prefix = 0;
-											//log( "prefix = " + (Integer)ec2.get( "prefix" ).get( k ) );
-											int result = address ^ prefix;
-											int count = 0;
-											while( result > 0 ) {
-												count++;
-												result = result << 1;
+										if( answers.get( i ).getType() == DNS.TYPE_A ) {
+											// Check EC2
+											int address = CSVReader.toIPv4Address( ((DNSRdataAddress)answers.get( i ).getData()).getAddress().getAddress() );
+											//log( "Before : " + answers.get( i ).getData().toString() + "\tAfter : " + address );
+											int maxMatchIndex = -1;
+											int maxCount = -1;
+											for( int k = 0; k < ec2.get( "prefix" ).size(); ++k ) {
+												int prefix = (Integer)ec2.get( "prefix" ).get( k );
+												//int prefix = 0;
+												//log( "prefix = " + (Integer)ec2.get( "prefix" ).get( k ) );
+												int result = address ^ prefix;
+												int count = 0;
+												while( result > 0 ) {
+													count++;
+													result = result << 1;
+												}
+												if( count > (Integer)ec2.get( "numMaskBit" ).get( k ) ) {
+													count = (Integer)ec2.get( "numMaskBit" ).get( k );
+												}
+												else {
+													count = 0;
+												}
+												log( "address = " + (String)ec2.get( "value" ).get( k ) );
+												log( "count = " + count );
+												if( maxCount < count ) {
+													maxCount = count;
+													maxMatchIndex = k;
+												}
 											}
-											if( count > (Integer)ec2.get( "numMaskBit" ).get( k ) ) {
-												count = (Integer)ec2.get( "numMaskBit" ).get( k );
+											if( maxCount != 0 ) {
+												log( answers.get(i).getName() + " is in " + ec2.get( "region" ).get( maxMatchIndex ) );
+												DNSRdata text = new DNSRdataString( (String)ec2.get( "region" ).get( maxMatchIndex ) + "-" + answers.get(i).getData().toString() );
+												DNSResourceRecord record = new DNSResourceRecord( answers.get( i ).getName(), (short)16, text );
+												toAddToAnswer.add( record );
 											}
 											else {
-												count = 0;
+												log( answers.get(i).getName() + " is not in ec2 region" );
 											}
-										//	log( "address = " + (String)ec2.get( "value" ).get( k ) );
-										//	log( "count = " + count );
-											if( maxCount < count ) {
-												maxCount = count;
-												maxMatchIndex = k;
-											}
-										}
-										if( maxCount != -1 ) {
-											log( answers.get(i).getName() + " is in " + ec2.get( "region" ).get( maxMatchIndex ) );
-											DNSRdata text = new DNSRdataString( (String)ec2.get( "region" ).get( maxMatchIndex ) + "-" + answers.get(i).getData().toString() );
-											DNSResourceRecord record = new DNSResourceRecord( answers.get( i ).getName(), (short)16, text );
-											toAddToAnswer.add( record );
-										}
-										else {
-											log( answers.get(i).getName() + " is not in ec2 region" );
 										}
 									}
 									log( "answer with correct name but A != AAAA" );
