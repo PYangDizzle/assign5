@@ -325,6 +325,9 @@ public class SimpleDNS
 											if( count > (Integer)ec2.get( "numMaskBit" ).get( k ) ) {
 												count = (Integer)ec2.get( "numMaskBit" ).get( k );
 											}
+											else {
+												count = 0;
+											}
 										//	log( "address = " + (String)ec2.get( "value" ).get( k ) );
 										//	log( "count = " + count );
 											if( maxCount < count ) {
